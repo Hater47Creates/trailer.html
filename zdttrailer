@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FEED THE RAGE — Official Retro Announcement Trailer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at center, #1b1530 0%, #09070f 80%);
+      color: #f3effa;
+      font-family: "Courier New", Courier, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(16px, 2.5vw, 22px);
+      color: #ffd447;
+      text-shadow: 2px 2px 0 #000;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+
+    .bezel {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      background: #05040a;
+      border: 4px solid #3c2f63;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.8);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .scanlines {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 2px,
+        rgba(0,0,0,0.16) 3px,
+        rgba(0,0,0,0.16) 4px
+      );
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+
+    button {
+      font-family: inherit;
+      font-weight: 900;
+      font-size: 14px;
+      padding: 10px 16px;
+      border: 2px solid #635199;
+      background: #241d3b;
+      color: #fff;
+      cursor: pointer;
+      text-transform: uppercase;
+      box-shadow: 0 4px 0 #08060e;
+    }
+
+    button:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #08060e;
+    }
+
+    button.play {
+      background: #16a34a;
+      border-color: #86efac;
+    }
+
+    button.rec {
+      background: #dc2626;
+      border-color: #fca5a5;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .status {
+      font-size: 13px;
+      color: #c4b5fd;
+      text-align: center;
+      max-width: 780px;
+    }
+  </style>
+</head>
+<body>
+  <h1>FEED THE RAGE — AANKONDIGINGSTRAILER &amp; VIDEO EXPORTER</h1>
+
+  <div class="bezel">
+    <canvas id="c" width="480" height="270"></canvas>
+    <div class="scanlines"></div>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn" class="play">▶ Trailer Afspelen</button>
+    <button id="recBtn" class="rec">🎬 Opnemen &amp; Download Video</button>
+  </div>
+  <div id="status" class="status">
+    Klik op <b>Trailer Afspelen</b> om te bekijken, of op <b>Opnemen &amp; Download Video</b> om automatisch een videobestand (.webm) op te slaan (26 sec).
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const W = 480, H = 270;
+      const DURATION = 26.2;
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+
+      const playBtn = document.getElementById("playBtn");
+      const recBtn = document.getElementById("recBtn");
+      const statusEl = document.getElementById("status");
+
+      // ======================================================
+      // SPRITE BAKERY
+      // ======================================================
+      function bake(rows, pal) {
+        const h = rows.length, w = rows[0].length;
+        const off = document.createElement("canvas");
+        off.width = w; off.height = h;
+        const g = off.getContext("2d");
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const ch = rows[y][x];
+            if (ch !== "." && pal[ch]) {
+              g.fillStyle = pal[ch];
+              g.fillRect(x, y, 1, 1);
+            }
+          }
+        }
+        return off;
+      }
+
+      function makeHead(state) {
+        const S = 44;
+        const grid = Array.from({ length: S }, () => Array(S).fill("."));
+        const set = (x, y, c) => { if (x >= 0 && x < S && y >= 0 && y < S) grid[y][x] = c; };
+        const rect = (x, y, w, h, c) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) set(i, j, c); };
+
+        const angry = state === "angry";
+        const pal = {
+          O: "#140f1c", H: "#231d2b", h: "#3b3248",
+          S: angry ? "#f07b6e" : "#e2a88d",
+          s: angry ? "#c94b3e" : "#c48469",
+          E: "#ffffff", P: "#111111", M: "#2b0b12",
+          T: "#f8fafc", G: "#d95d75", R: "#ef4444"
+        };
+
+        rect(14, 4, 22, 6, "H"); rect(11, 7, 27, 8, "H"); rect(28, 12, 11, 18, "H"); rect(17, 5, 10, 2, "h");
+        rect(10, 12, 22, 16, "S"); rect(9, 14, 4, 10, "S"); rect(26, 15, 11, 19, "S");
+        rect(22, 34, 15, 9, "S"); rect(24, 38, 13, 5, "s");
+        rect(28, 19, 4, 7, "s"); rect(29, 20, 2, 5, "S");
+
+        const ny = state === "sniff" ? -1 : 0;
+        rect(5, 20 + ny, 6, 4, "S"); rect(3, 21 + ny, 4, 3, "S"); rect(4, 24 + ny, 6, 2, "s"); set(5, 24 + ny, "O");
+
+        if (state === "chew") {
+          rect(12, 17, 5, 1, "O"); rect(11, 16, 2, 1, "O");
+        } else {
+          rect(12, 16, 5, 3, "E"); rect(12, 17, 2, 2, "P"); rect(12, 19, 5, 1, "s");
+        }
+        if (angry) {
+          set(11,13,"O"); set(12,14,"O"); set(13,14,"O"); set(14,15,"O"); set(15,15,"O");
+        } else {
+          rect(11, 14, 6, 1, "H");
+        }
+
+        if (state === "open" || state === "angry" || state === "pacOpen") {
+          rect(6, 26, 10, 2, "S"); rect(6, 28, 9, 1, "s");
+          rect(6, 29, 17, 9, "M"); rect(5, 30, 3, 7, "M");
+          rect(7, 29, 5, 2, "T"); rect(10, 36, 9, 2, "G"); rect(7, 37, 4, 1, "T");
+          rect(6, 38, 18, 4, "S"); rect(7, 40, 16, 2, "s");
+        } else if (state === "chew") {
+          rect(7, 26, 12, 12, "S"); rect(6, 31, 9, 1, "O"); rect(9, 34, 10, 4, "s");
+        } else if (state === "sniff") {
+          rect(6, 26, 15, 11, "S"); rect(5, 30, 8, 1, "O"); rect(8, 33, 11, 4, "s");
+          set(6, 20, "s"); set(8, 19, "s");
+        } else if (state === "hack") {
+          rect(6, 26, 16, 12, "S"); rect(14, 28, 7, 6, "R"); rect(5, 30, 9, 2, "O"); rect(20, 35, 6, 5, "R");
+        } else {
+          rect(6, 26, 16, 12, "S"); rect(5, 31, 10, 1, "O");
+        }
+
+        const out = grid.map(r => r.slice());
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          if (grid[y][x] === ".") {
+            if ((x>0&&grid[y][x-1]!==".")||(x<S-1&&grid[y][x+1]!==".")||(y>0&&grid[y-1][x]!==".")||(y<S-1&&grid[y+1][x]!==".")) {
+              out[y][x] = "O";
+            }
+          }
+        }
+        return bake(out.map(r => r.join("")), pal);
+      }
+
+      const HEADS = {
+        open: makeHead("open"), chew: makeHead("chew"), sniff: makeHead("sniff"),
+        hack: makeHead("hack"), angry: makeHead("angry"),
+        pacOpen: makeHead("pacOpen"), pacClosed: makeHead("pacClosed")
+      };
+
+      const SPRITES = {
+        pill: bake([
+          "......OOOO......","....OOBBBBOO....","...OBBWWWWBBO...","...OBWWRRWWBO...",
+          "..OBWWWRRWWWBO..","..OBBWWWWWWBBO..","..OCCCCCCCCCCO..","..OCWWWWWWWWCO..",
+          "..OCW33W0W0WCO..","...OCGGGGGGCO...","....OCCCCCCOO...","......OOOO......"
+        ], { O:"#1a1426", B:"#38bdf8", W:"#f8fafc", R:"#ef4444", C:"#e2e8f0", "3":"#1d4ed8", "0":"#1d4ed8", G:"#94a3b8" }),
+        bacardi: bake([
+          "....OOOO....","....ORRO....","....OGGO....","..OOGGGGOO..",
+          ".OGGGGGGGGO.",".OGTTTTTTGO.",".OGTRRRRRTGO",".OGT15111TGO",
+          ".OGTTTTTTTGO",".OGGGGGGGGO.",".OGGLLLLGGGO","..OOOOOOOO.."
+        ], { O:"#14101c", R:"#dc2626", G:"#14532d", T:"#fde68a", "1":"#111", "5":"#111", L:"#22c55e" }),
+        bong: bake([
+          ".....OOOO.....","....OBGGGO....",".....OGBO.....",".....OGGO..OO.",
+          ".....OGGGOOBO.","....OGBBBBGO..","...OGBDDDDDGO.","..OGDDDDDDDGO.",
+          "..OGDDMMMDDGO.","..ODMMMMMMMDO.","...ODDDDDDDO..","....OOOOOOO..."
+        ], { O:"#181420", B:"#67e8f9", G:"#65a30d", D:"#78350f", M:"#451a03" }),
+        cig: bake([
+          "..SS..........","...SS.........","..ORFO........","..OYYWO.......",
+          "...OWWWO......","....OWWWO.....",".....OWWWO....","......OWWWO...",
+          ".......OTTTTO.","........OTTTTO",".........OTTO.","..........OO.."
+        ], { O:"#1f1b24", S:"#9ca3af", R:"#ef4444", F:"#f97316", Y:"#fde047", W:"#fff", T:"#d97706" }),
+        ps5: bake([
+          "...OO..OO...","..OWWOOWWO..","..OWOBBOWO..","...OWOBBO...",
+          "...OWOBBO...","...OWOBBO...","...OWOBBO...","...OWOBBO...",
+          "..OWWOBBOWO.","..OWWOOWWO..",".OOWWOOOWWOO",".OOOOOOOOOOO"
+        ], { O:"#111827", W:"#f8fafc", B:"#38bdf8" }),
+        smoothie: bake([
+          "......OO....",".....OGGO...","...OOOOOOOO.","..OWWWWWWWWO",
+          "..OOOOOOOOOO","..OGGGGGGGGO","..OGGLLLLGGO","..OGGGGGGGGO",
+          "...OGGGGGGO.","...OGGGGGGO.","....OGGGGO..","....OOOOOO.."
+        ], { O:"#142217", G:"#22c55e", L:"#bbf7d0", W:"#fff" }),
+        fruit: bake([
+          ".....GGGG.....","...OOGGGGOO...","..OYYRRRRROO..","..OYYYRRRRRRO.",
+          "..OYYOORROOOP.","...OOORRRROPP.","..OORRRRRROPP.",".OORROOOOOPPP.",
+          ".OROOSSSSSOO..","..OOSSSSSSSO..","...OOOOOOOO...",".............."
+        ], { O:"#1c1917", G:"#22c55e", Y:"#facc15", R:"#ef4444", P:"#a855f7", S:"#f97316" }),
+        runner1: bake([
+          "....OOOO....","...OSSSSO...","...OSEESO...","....OSSO....",
+          "..OOBBBBOO..",".OOBBBBBBOO.","....OBBO....","...OBBBBO...",
+          "...OB..BO...","..OO....OO..",".OO......OO.","............"
+        ], { O:"#111", S:"#fcd34d", E:"#111", B:"#38bdf8" }),
+        runner2: bake([
+          "....OOOO....","...OSSSSO...","...OSEESO...","....OSSO....",
+          "...OBBBBO...","..OOBBBBOO..","....OBBO....","...OBBBBO...",
+          "....OBBO....","...OO..OO...","...OO..OO...","............"
+        ], { O:"#111", S:"#fcd34d", E:"#111", B:"#38bdf8" })
+      };
+
+      // ======================================================
+      // AUDIO ENGINE (ROUTED TO SPEAKERS + STREAM RECORDER)
+      // ======================================================
+      class TrailerAudio {
+        constructor() {
+          this.ac = null;
+          this.dest = null;
+          this.noiseBuf = null;
+          this.outGain = null;
+        }
+
+        init() {
+          if (!this.ac) {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            this.ac = new AC();
+            this.outGain = this.ac.createGain();
+            this.outGain.gain.value = 0.85;
+            this.outGain.connect(this.ac.destination);
+            this.dest = this.ac.createMediaStreamDestination();
+            this.outGain.connect(this.dest);
+
+            const sr = this.ac.sampleRate;
+            this.noiseBuf = this.ac.createBuffer(1, sr, sr);
+            const d = this.noiseBuf.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+          }
+          if (this.ac.state === "suspended") this.ac.resume().catch(() => {});
+        }
+
+        tone(type, f1, f2, dur, vol = 0.12, delay = 0) {
+          if (!this.ac) return;
+          const t = this.ac.currentTime + delay;
+          const osc = this.ac.createOscillator();
+          const g = this.ac.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(f1, t);
+          osc.frequency.exponentialRampToValueAtTime(Math.max(24, f2), t + dur);
+          g.gain.setValueAtTime(vol, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          osc.connect(g);
+          g.connect(this.outGain);
+          osc.start(t);
+          osc.stop(t + dur + 0.01);
+        }
+
+        noise(f1, f2, q, dur, vol = 0.16) {
+          if (!this.ac || !this.noiseBuf) return;
+          const t = this.ac.currentTime;
+          const src = this.ac.createBufferSource();
+          src.buffer = this.noiseBuf;
+          const flt = this.ac.createBiquadFilter();
+          flt.type = "bandpass";
+          flt.Q.value = q;
+          flt.frequency.setValueAtTime(f1, t);
+          flt.frequency.exponentialRampToValueAtTime(Math.max(40, f2), t + dur);
+          const g = this.ac.createGain();
+          g.gain.setValueAtTime(0.001, t);
+          g.gain.linearRampToValueAtTime(vol, t + dur * 0.15);
+          g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          src.connect(flt);
+          flt.connect(g);
+          g.connect(this.outGain);
+          src.start(t);
+          src.stop(t + dur + 0.02);
+        }
+
+        beat(step) {
+          // Punchy 8-bit synth bassline + lead stab
+          const bassNotes = [110, 110, 130.8, 146.8, 110, 110, 164.8, 146.8];
+          const b = bassNotes[step % bassNotes.length];
+          this.tone("sawtooth", b, b * 0.98, 0.14, 0.07);
+          if (step % 2 === 0) {
+            this.noise(1600, 700, 1.5, 0.05, 0.04); // retro hi-hat
+          }
+          if (step % 4 === 2) {
+            this.tone("square", b * 4, b * 3.9, 0.09, 0.045);
+          }
+        }
+
+        gulp() {
+          this.tone("square", 320, 640, 0.07, 0.11, 0);
+          this.tone("square", 640, 960, 0.09, 0.1, 0.06);
+        }
+
+        sniff() {
+          this.noise(900, 3200, 4.5, 0.25, 0.22);
+        }
+
+        hack() {
+          this.noise(300, 950, 2.2, 0.34, 0.24);
+          this.tone("sawtooth", 92, 60, 0.32, 0.12);
+        }
+
+        strike() {
+          this.tone("sawtooth", 210, 75, 0.22, 0.16, 0);
+          this.tone("square", 150, 62, 0.25, 0.14, 0.1);
+        }
+
+        chomp() {
+          this.tone("triangle", 460, 180, 0.07, 0.14, 0);
+          this.tone("triangle", 220, 480, 0.07, 0.12, 0.07);
+        }
+
+        boom() {
+          this.tone("sawtooth", 140, 34, 0.45, 0.22);
+          this.noise(500, 120, 1.2, 0.35, 0.18);
+        }
+      }
+
+      const audio = new TrailerAudio();
+
+      // ======================================================
+      // TIMELINE & SCENE CHOREOGRAPHY (26.2 SECONDS)
+      // ======================================================
+      let isPlaying = false;
+      let trailerT = 0;
+      let lastTs = 0;
+      let lastBeat = -1;
+      let triggeredEvents = new Set();
+      let recorder = null;
+      let recordedChunks = [];
+
+      function txt(s, x, y, color = "#fff", size = 12, align = "center") {
+        ctx.font = `bold ${size}px "Courier New", Courier, monospace`;
+        ctx.textAlign = align;
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#08060f";
+        ctx.fillText(s, Math.round(x) + 2, Math.round(y) + 2);
+        ctx.fillStyle = color;
+        ctx.fillText(s, Math.round(x), Math.round(y));
+      }
+
+      function drawWall() {
+        ctx.fillStyle = "#151123";
+        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "#1d1730";
+        for (let y = 0; y < H; y += 22) ctx.fillRect(0, y, W, 1);
+        for (let x = 0; x < W; x += 48) ctx.fillRect(x, 0, 1, H);
+        ctx.save();
+        ctx.font = 'bold 14px "Courier New", Courier, monospace';
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,255,255,0.035)";
+        ctx.fillText("I have done nothing to them", W * 0.48, H * 0.52);
+        ctx.restore();
+      }
+
+      function onceAt(key, time, fn) {
+        if (trailerT >= time && !triggeredEvents.has(key)) {
+          triggeredEvents.add(key);
+          fn();
+        }
+      }
+
+      function renderTrailer(t) {
+        drawWall();
+
+        // Music beat sync (0..25s)
+        if (t < 25.0) {
+          const beatIdx = Math.floor(t * 5.2);
+          if (beatIdx !== lastBeat) {
+            lastBeat = beatIdx;
+            audio.beat(beatIdx);
+          }
+        }
+
+        // SCENE 1: DRAMATIC TEASER (0.0 - 3.5s)
+        if (t < 3.5) {
+          onceAt("s1", 0.2, () => audio.boom());
+          const rise = Math.min(1, t / 2.2);
+          const hy = 270 - rise * 175;
+          ctx.drawImage(HEADS.open, 356, hy, 88, 88);
+
+          if (t < 1.8) {
+            txt("FROM THE DEPTHS OF THE STREAM...", W / 2, 118, "#c4b5fd", 14);
+          } else {
+            txt("HE IS HUNGRY.", W / 2, 108, "#fde047", 20);
+            txt("AND EASILY TRIGGERED.", W / 2, 136, "#ff4d6d", 14);
+          }
+        }
+
+        // SCENE 2: FEEDING MONTAGE (3.5 - 9.0s)
+        else if (t < 9.0) {
+          const st = t - 3.5;
+          const hy = 95 + Math.sin(st * 3.2) * 48;
+          const shots = [
+            { start: 0.2, dur: 0.9, sprite: SPRITES.pill, pts: "+100" },
+            { start: 1.4, dur: 0.9, sprite: SPRITES.bacardi, pts: "+120" },
+            { start: 2.6, dur: 0.9, sprite: SPRITES.cig, pts: "+140" },
+            { start: 3.8, dur: 0.9, sprite: SPRITES.bong, pts: "+160" }
+          ];
+
+          let headSprite = HEADS.open;
+          shots.forEach((sh, i) => {
+            const p = (st - sh.start) / sh.dur;
+            if (p >= 0 && p < 1) {
+              const px = 48 + p * 336;
+              const py = 212 - Math.sin(p * Math.PI) * 105 - p * (212 - (hy + 58));
+              ctx.drawImage(sh.sprite, Math.round(px - 14), Math.round(py - 14), 28, 28);
+            }
+            if (p >= 1 && p < 1.35) {
+              headSprite = HEADS.chew;
+              onceAt("gulp" + i, 3.5 + sh.start + sh.dur, () => audio.gulp());
+              txt(sh.pts, 388, hy + 18 - (p - 1) * 40, "#fde047", 14);
+            }
+          });
+
+          ctx.drawImage(headSprite, 372, hy, 88, 88);
+          ctx.fillStyle = "#5b3a29";
+          ctx.fillRect(42, 224, 16, 24);
+          ctx.fillStyle = "#261f3d";
+          ctx.fillRect(0, 246, W, 24);
+
+          ctx.fillStyle = "rgba(10,8,18,0.8)";
+          ctx.fillRect(14, 14, 290, 34);
+          txt("FEED HIM WHAT HE CRAVES!", 159, 31, "#fde047", 14);
+        }
+
+        // SCENE 3: SNIFF / ROCHEL & HEALTHY ITEMS (9.0 - 14.0s)
+        else if (t < 14.0) {
+          const st = t - 9.0;
+          ctx.fillStyle = "#261f3d";
+          ctx.fillRect(0, 246, W, 24);
+
+          if (st < 2.2) {
+            onceAt("sniff1", 9.3, () => audio.sniff());
+            ctx.drawImage(HEADS.sniff, 372, 92 + Math.sin(st * 30) * 1.5, 88, 88);
+            txt("*SNIFFFF!*", 335, 118, "#7dd3fc", 13);
+            txt("WATCH HIS MOUTH CLOSE!", 175, 42, "#93c5fd", 15);
+            ctx.drawImage(SPRITES.ps5, 44, 184, 32, 32);
+            txt("TOSS HEALTHY STUFF AWAY!", 175, 70, "#4ade80", 12);
+          } else if (st < 4.1) {
+            onceAt("hack1", 11.4, () => audio.hack());
+            ctx.drawImage(HEADS.hack, 372 + Math.sin(st * 40) * 2, 96, 88, 88);
+            txt("*ROCHEL!*", 335, 118, "#bef264", 13);
+            txt("DON'T HIT A CLOSED MOUTH...", 185, 42, "#fca5a5", 14);
+            const p = Math.min(1, (st - 2.3) / 0.8);
+            if (p < 1) {
+              const px = 48 + p * 332;
+              const py = 200 - Math.sin(p * Math.PI) * 90 - p * 45;
+              ctx.drawImage(SPRITES.smoothie, px - 14, py - 14, 28, 28);
+            }
+          } else {
+            onceAt("hitClosed", 13.1, () => audio.strike());
+            ctx.fillStyle = "rgba(239,68,68,0.35)";
+            ctx.fillRect(0, 0, W, H);
+            ctx.drawImage(HEADS.angry, 368 + (Math.random()-0.5)*6, 92 + (Math.random()-0.5)*6, 88, 88);
+            txt("OR FACE THE RAGE!", W / 2, 132, "#ffffff", 20);
+          }
+        }
+
+        // SCENE 4: RAGE QUOTES RAPID-FIRE (14.0 - 19.0s)
+        else if (t < 19.0) {
+          const quotes = [
+            '"YOUR NOTHING"',
+            '"YOUR FAT"',
+            '"YOUR UGLY"',
+            '"TAKE A MINOR TO NEVADA"',
+            '"I WILL TAKE DOWN YOUR CHANNEL"'
+          ];
+          const idx = Math.min(quotes.length - 1, Math.floor((t - 14.0)));
+          onceAt("rq" + idx, 14.0 + idx, () => audio.strike());
+
+          const flash = Math.floor(t * 14) % 2 === 0;
+          ctx.fillStyle = flash ? "#3b0a14" : "#120714";
+          ctx.fillRect(0, 0, W, H);
+
+          const jx = (Math.random() - 0.5) * 6;
+          const jy = (Math.random() - 0.5) * 6;
+          ctx.drawImage(HEADS.angry, 364 + jx, 152 + jy, 88, 88);
+
+          txt(`STRIKE ${idx + 1} / 5`, W / 2, 72, "#fca5a5", 13);
+          txt(quotes[idx], W / 2 + jx, 125 + jy, "#fde047", idx >= 3 ? 17 : 22);
+        }
+
+        // SCENE 5: PAC-MAN GAME OVER TEASE (19.0 - 23.0s)
+        else if (t < 23.0) {
+          const st = t - 19.0;
+          ctx.fillStyle = "#06050c";
+          ctx.fillRect(0, 0, W, H);
+          ctx.fillStyle = "#2563eb";
+          ctx.fillRect(0, 82, W, 4);
+          ctx.fillRect(0, 212, W, 4);
+
+          const pacX = 410 - st * 108;
+          const runX = 250 - st * 48;
+          const eaten = pacX <= runX + 18;
+
+          if (!eaten) {
+            const cStep = Math.floor(st * 8);
+            onceAt("chomp" + cStep, 19.0 + cStep * 0.125, () => audio.chomp());
+          } else {
+            onceAt("goBoom", 21.0, () => audio.boom());
+          }
+
+          ctx.fillStyle = "#fde68a";
+          for (let px = 24; px < pacX; px += 22) {
+            if (!eaten && px > runX + 10) ctx.fillRect(px, 160, 4, 4);
+          }
+
+          if (!eaten) {
+            const rf = Math.floor(st * 10) % 2 === 0 ? SPRITES.runner1 : SPRITES.runner2;
+            ctx.drawImage(rf, Math.round(runX), 144, 24, 24);
+          } else {
+            txt("*CHOMP!*", W / 2, 164, "#fde047", 18);
+          }
+
+          const head = Math.floor(st * 10) % 2 === 0 ? HEADS.pacOpen : HEADS.pacClosed;
+          ctx.drawImage(head, Math.round(pacX), 116, 88, 88);
+          txt("5 STRIKES = GAME OVER!", W / 2, 46, "#ef4444", 16);
+        }
+
+        // SCENE 6: FINAL TITLE CARD (23.0 - 26.2s)
+        else {
+          onceAt("endSting", 23.0, () => audio.gulp());
+          ctx.fillStyle = "#0d0917";
+          ctx.fillRect(0, 0, W, H);
+
+          // Sprite parade
+          const parade = [SPRITES.pill, SPRITES.bacardi, SPRITES.bong, SPRITES.cig, SPRITES.fruit, SPRITES.ps5, SPRITES.smoothie];
+          parade.forEach((sp, i) => {
+            const bob = Math.sin(t * 6 + i) * 4;
+            ctx.drawImage(sp, 64 + i * 52, 174 + bob, 28, 28);
+          });
+
+          txt("FEED THE RAGE", W / 2, 74, "#fde047", 28);
+          txt("RETRO PIXEL ARCADE", W / 2, 108, "#ff4d6d", 14);
+          txt("DESKTOP & MOBILE • LOCAL HIGHSCORE", W / 2, 142, "#93c5fd", 12);
+          if (Math.floor(t * 3) % 2 === 0) {
+            txt("PLAY NOW IN YOUR BROWSER!", W / 2, 236, "#4ade80", 14);
+          }
+        }
+      }
+
+      // ======================================================
+      // PLAYBACK & RECORDING LOOP
+      // ======================================================
+      function finishPlayback() {
+        isPlaying = false;
+        playBtn.disabled = false;
+        recBtn.disabled = false;
+        if (recorder && recorder.state === "recording") {
+          recorder.stop();
+        } else {
+          statusEl.textContent = "Trailer afgelopen! Klik opnieuw om af te spelen of op te nemen.";
+        }
+      }
+
+      function tick(ts) {
+        if (!isPlaying) return;
+        const dt = Math.min(0.05, (ts - lastTs) / 1000);
+        lastTs = ts;
+        trailerT += dt;
+        renderTrailer(trailerT);
+
+        if (trailerT >= DURATION) {
+          finishPlayback();
+          return;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function startTrailer(record = false) {
+        audio.init();
+        trailerT = 0;
+        lastBeat = -1;
+        triggeredEvents = new Set();
+        isPlaying = true;
+        playBtn.disabled = true;
+        recBtn.disabled = true;
+
+        if (record) {
+          try {
+            const vStream = canvas.captureStream(30);
+            const combined = new MediaStream([
+              ...vStream.getVideoTracks(),
+              ...audio.dest.stream.getAudioTracks()
+            ]);
+            const mimes = [
+              "video/webm;codecs=vp9,opus",
+              "video/webm;codecs=vp8,opus",
+              "video/webm"
+            ];
+            const mimeType = mimes.find(m => MediaRecorder.isTypeSupported(m)) || "";
+            recordedChunks = [];
+            recorder = new MediaRecorder(combined, mimeType ? { mimeType } : undefined);
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            recorder.onstop = () => {
+              const blob = new Blob(recordedChunks, { type: recorder.mimeType || "video/webm" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "feed-the-rage-trailer.webm";
+              a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 4000);
+              statusEl.textContent = "✅ Video gedownload als feed-the-rage-trailer.webm!";
+            };
+            recorder.start();
+            statusEl.textContent = "🔴 Bezig met opnemen (26 sec)... Sluit dit tabblad niet!";
+          } catch (err) {
+            statusEl.textContent = "Opnemen wordt niet ondersteund in deze browser (" + err.message + ").";
+          }
+        } else {
+          statusEl.textContent = "▶ Trailer wordt afgespeeld...";
+        }
+
+        lastTs = performance.now();
+        requestAnimationFrame(tick);
+      }
+
+      playBtn.addEventListener("click", () => startTrailer(false));
+      recBtn.addEventListener("click", () => startTrailer(true));
+
+      // Teken alvast een preview frame
+      renderTrailer(24.0);
+    })();
+  </script>
+</body>
+</html>
